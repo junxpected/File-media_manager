@@ -15,3 +15,4 @@ namespace File_manager.Interfaces
         AssetMetadata Baseline { get; set; }
     }
 }
+    
