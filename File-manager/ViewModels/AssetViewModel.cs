@@ -2,10 +2,11 @@
 using File_manager.Models;
 using System.Collections.ObjectModel;
 using System.IO;
-using System.Windows.Input;
 using System.Linq;
-using System.Windows.Media.Animation;
 using System.Windows;
+using System.Windows.Input;
+using System.Windows.Media.Animation;
+using System.Windows.Shapes;
 
 
 namespace File_manager.ViewModels
@@ -48,7 +49,7 @@ namespace File_manager.ViewModels
             }
         }
 
-        private void DeleteAsset(IAsset asset)
+        public void DeleteAsset(IAsset asset)
         {
             if (asset.Status == FileStatus.New)
             {
@@ -60,6 +61,19 @@ namespace File_manager.ViewModels
             {
                 MessageBox.Show($"файл має статус: {asset.Status} і не може бути видалений");
             }
+        }
+        public void StartWatching(string path)
+        {
+            _watcher.Start(path);
+        }
+        public void LoadFolder(string path)
+        {
+            Assets.Clear();
+            foreach (var file in Directory.GetFiles(path))
+            {
+                var asset = new MediaAsset { FullPath = file };
+                Assets.Add(asset);
+            }   
         }
     }
 }
