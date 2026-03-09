@@ -69,7 +69,7 @@ namespace File_manager.ViewModels
         public void LoadFolder(string path)
         {
             Assets.Clear();
-            foreach (var file in Directory.GetFiles(path))
+            foreach (var file in Directory.GetFiles(path, "*", SearchOption.AllDirectories))
             {
                 var asset = new MediaAsset { FullPath = file };
                 Assets.Add(asset);
