@@ -10,7 +10,8 @@ namespace File_manager.Interfaces
         Guid Id { get; set; }
 
         string FullPath { get; set; }
-
+        string Name { get;}
+        string Comment { get; set; }
         FileStatus Status { get; set; }
         AssetMetadata Baseline { get; set; }
     }
