@@ -73,7 +73,9 @@ namespace File_manager.ViewModels
             {
                 var asset = new MediaAsset { FullPath = file };
                 Assets.Add(asset);
-            }   
+                _repository.Save(asset);
+            }
+            _repository.Commit();
         }
     }
 }
