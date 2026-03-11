@@ -10,25 +10,38 @@ namespace File_manager.Services
 
         public FileStatus CalculateStatus(FileSystemInfo current, AssetMetadata baseline)
         {
+            return ResolveStatus(current, baseline, FileStatus.Locked);
+        }
+
+        public FileStatus ResolveStatus(FileSystemInfo current, AssetMetadata baseline,
+                                         FileStatus savedStatus)
+        {
+            // 1. Файл зник
             if (!current.Exists)
                 return FileStatus.Missing;
 
-            if (current is FileInfo fileInfo)
+            if (current is FileInfo file)
             {
-                // Файл змінився якщо час запису або розмір відрізняється від baseline
-                bool isModified = fileInfo.LastWriteTime != baseline.RegisteredTime
-                               || fileInfo.Length != baseline.RegisteredSize;
+                bool changed = Math.Abs((file.LastWriteTime - baseline.RegisteredTime).TotalSeconds) > 2
+                            || file.Length != baseline.RegisteredSize;
 
-                if (isModified)
+                // 2. Файл змінився — Modified завжди, навіть якщо New чи Approved
+                if (changed)
                     return FileStatus.Modified;
             }
 
-            // Файл не змінений — перевіряємо вік по FirstSeenTime
-            var age = DateTime.Now - baseline.FirstSeenTime;
-            if (age.TotalDays <= NewThresholdDays)
+            // 3. Файл не змінився — зберігаємо ручний стан
+            if (savedStatus == FileStatus.Approved ||
+                savedStatus == FileStatus.Rejected ||
+                savedStatus == FileStatus.Done)
+                return savedStatus;
+
+            // 4. New — файл молодший 3 днів (по CreationTime, не по RegisetredTime)
+            if ((DateTime.Now - baseline.FirstSeenTime).TotalDays <= NewThresholdDays)
                 return FileStatus.New;
 
-            return FileStatus.Locked; // "без статусу" у відображенні
+            // 5. Старий, без змін — порожньо
+            return FileStatus.Locked;
         }
     }
 }

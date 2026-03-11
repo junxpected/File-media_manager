@@ -8,24 +8,25 @@ namespace File_manager.Services
     public class SSVRepository : IRepository<IAsset>
     {
         private readonly string _filePath;
-        private readonly List<IAsset> _cache = new();
+
+        // Всі файли з усіх папок — ключ: FullPath
+        private readonly Dictionary<string, IAsset> _cache =
+            new(StringComparer.OrdinalIgnoreCase);
+
+        private bool _csvLoaded = false;
 
         public SSVRepository(string filePath)
         {
             _filePath = filePath;
         }
 
-        public void Save(IAsset item)
+        // Завантажує CSV в кеш один раз при старті
+        private void EnsureLoaded()
         {
-            if (!_cache.Any(a => a.Id == item.Id))
-                _cache.Add(item);
-        }
+            if (_csvLoaded) return;
+            _csvLoaded = true;
 
-        /// <summary>Повертає словник FullPath -> IAsset для швидкого відновлення даних</summary>
-        public Dictionary<string, IAsset> LoadAsDictionary()
-        {
-            var dict = new Dictionary<string, IAsset>(StringComparer.OrdinalIgnoreCase);
-            if (!File.Exists(_filePath)) return dict;
+            if (!File.Exists(_filePath)) return;
 
             foreach (var line in File.ReadAllLines(_filePath))
             {
@@ -33,35 +34,53 @@ namespace File_manager.Services
                 if (parts.Length < 7) continue;
                 try
                 {
-                    var firstSeen = parts.Length >= 8
-                        ? DateTime.Parse(parts[7])
-                        : DateTime.Parse(parts[5]); // fallback для старих записів
-
                     var asset = new MediaAsset
                     {
-                        Id = Guid.Parse(parts[0]),
+                        Id       = Guid.Parse(parts[0]),
                         FullPath = parts[1],
-                        Comment = parts[3],
-                        Status = Enum.Parse<FileStatus>(parts[4]),
+                        Comment  = parts[3],
+                        Status   = Enum.Parse<FileStatus>(parts[4]),
                         Baseline = new AssetMetadata
                         {
                             RegisteredTime = DateTime.Parse(parts[5]),
                             RegisteredSize = long.Parse(parts[6]),
-                            FirstSeenTime = firstSeen
+                            FirstSeenTime  = parts.Length >= 8
+                                ? DateTime.Parse(parts[7])
+                                : DateTime.Parse(parts[5])
                         }
                     };
-                    dict[asset.FullPath] = asset;
+                    _cache[asset.FullPath] = asset;
                 }
                 catch { }
             }
-            return dict;
         }
 
-        public IEnumerable<IAsset> LoadAll() => _cache;
+        // Повертає збережені дані для конкретної папки
+        public Dictionary<string, IAsset> LoadAsDictionary()
+        {
+            EnsureLoaded();
+            return _cache;
+        }
 
+        // Додає або оновлює запис — той самий об'єкт що і в Assets
+        public void Save(IAsset item)
+        {
+            EnsureLoaded();
+            _cache[item.FullPath] = item;
+        }
+
+        // Видаляє запис (при видаленні файлу)
+        public void Remove(IAsset item)
+        {
+            _cache.Remove(item.FullPath);
+        }
+
+        public IEnumerable<IAsset> LoadAll() => _cache.Values;
+
+        // Записує ВСІ папки в CSV — не тільки поточну
         public void Commit()
         {
-            var lines = _cache.Select(a =>
+            var lines = _cache.Values.Select(a =>
                 $"{a.Id};{a.FullPath};{a.Name};{a.Comment};{a.Status};" +
                 $"{a.Baseline.RegisteredTime:O};{a.Baseline.RegisteredSize};" +
                 $"{a.Baseline.FirstSeenTime:O}");
