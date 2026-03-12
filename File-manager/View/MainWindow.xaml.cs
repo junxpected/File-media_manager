@@ -64,6 +64,7 @@ namespace File_manager.View
         private IAsset? _selectedAsset = null;
         private const string RecentFile = "recent_folders.txt";
         private ObservableCollection<string> _recentFolders = new();
+        private TrayIcon? _tray;
 
         public MainWindow()
         {
@@ -82,6 +83,13 @@ namespace File_manager.View
             LoadRecentFolders();
             UpdateStats();
             Loaded += (_, __) => HookColumnWidths();
+
+            _tray = new TrayIcon(this);
+
+            var args = Environment.GetCommandLineArgs();
+            if (args.Contains("--minimized")) Hide();
+
+            Closing += (s, e) => { e.Cancel = true; Hide(); };
         }
 
         // ── OPEN FOLDER ──────────────────────────────────────────────
@@ -180,16 +188,6 @@ namespace File_manager.View
         private void FilterDone_Click(object sender, RoutedEventArgs e)     { _statusFilter = FileStatus.Done;     RefreshView(); }
 
         // ── EXT FILTER ───────────────────────────────────────────────
-        private void ExtFilter_SelectionChanged(object sender, SelectionChangedEventArgs e)
-        {
-            if (_viewSource == null) return;
-            if (ExtFilter.SelectedItem is ComboBoxItem item)
-            {
-                var val = item.Content?.ToString() ?? "All types";
-                _extFilter = val == "All types" ? "" : val;
-                RefreshView();
-            }
-        }
 
         // ── FILTER LOGIC ─────────────────────────────────────────────
         private void ApplyFilters(object sender, FilterEventArgs e)
@@ -239,35 +237,7 @@ namespace File_manager.View
         }
 
         // ── ACTIONS ──────────────────────────────────────────────────
-        private void BtnApprove_Click(object sender, RoutedEventArgs e)
-        {
-            if (_selectedAsset == null) return;
-            _selectedAsset.Status = FileStatus.Approved;
-            DetailStatus.Text = _selectedAsset.Status.ToString();
-            _viewModel.SaveAndCommit();
-            RefreshView();
-            StatusBarText.Text = $"Approved: {_selectedAsset.Name}";
-        }
 
-        private void BtnReject_Click(object sender, RoutedEventArgs e)
-        {
-            if (_selectedAsset == null) return;
-            _selectedAsset.Status = FileStatus.Rejected;
-            DetailStatus.Text = _selectedAsset.Status.ToString();
-            _viewModel.SaveAndCommit();
-            RefreshView();
-            StatusBarText.Text = $"Rejected: {_selectedAsset.Name}";
-        }
-
-        private void BtnDone_Click(object sender, RoutedEventArgs e)
-        {
-            if (_selectedAsset == null) return;
-            _selectedAsset.Status = FileStatus.Done;
-            DetailStatus.Text = _selectedAsset.Status.ToString();
-            _viewModel.SaveAndCommit();
-            RefreshView();
-            StatusBarText.Text = $"Done: {_selectedAsset.Name}";
-        }
 
         private void BtnSaveComment_Click(object sender, RoutedEventArgs e)
         {
@@ -280,13 +250,34 @@ namespace File_manager.View
         private void BtnDelete_Click(object sender, RoutedEventArgs e)
         {
             if (_selectedAsset == null) return;
-            _viewModel.DeleteAsset(_selectedAsset);
-            _selectedAsset = null;
-            DetailName.Text = "Select a file";
-            DetailPath.Text = DetailSize.Text = DetailStatus.Text = DetailFolder.Text = "—";
-            DetailIcon.Text = "📄";
-            CommentBox.Text = "";
-            RefreshView();
+
+            if (_selectedAsset.Status == FileStatus.Modified)
+            {
+                var warn = MessageBox.Show(
+                    $"This file has unsaved changes (Modified):\n{_selectedAsset.Name}\n\nDelete anyway?",
+                    "Warning", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+                if (warn != MessageBoxResult.Yes) return;
+            }
+            else
+            {
+                var res = MessageBox.Show(
+                    $"Delete file?\n{_selectedAsset.Name}",
+                    "Confirm", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+                if (res != MessageBoxResult.Yes) return;
+            }
+
+            try
+            {
+                File.Delete(_selectedAsset.FullPath);
+                _viewModel.DeleteAsset(_selectedAsset);
+                _selectedAsset = null;
+                DetailName.Text = "Select a file";
+                DetailPath.Text = DetailSize.Text = DetailStatus.Text = DetailFolder.Text = "—";
+                DetailIcon.Text = "📄";
+                CommentBox.Text = "";
+                RefreshView();
+            }
+            catch (Exception ex) { MessageBox.Show(ex.Message, "Delete failed"); }
         }
 
         // ── DOUBLE CLICK ─────────────────────────────────────────────
@@ -302,23 +293,6 @@ namespace File_manager.View
                 });
             }
             catch (Exception ex) { StatusBarText.Text = $"Cannot open: {ex.Message}"; }
-        }
-
-        // ── DRAG & DROP ──────────────────────────────────────────────
-        private void FileList_DragOver(object sender, DragEventArgs e)
-        {
-            e.Effects = e.Data.GetDataPresent(DataFormats.FileDrop)
-                ? DragDropEffects.Copy : DragDropEffects.None;
-            e.Handled = true;
-        }
-
-        private void FileList_Drop(object sender, DragEventArgs e)
-        {
-            if (!e.Data.GetDataPresent(DataFormats.FileDrop)) return;
-            var paths = (string[])e.Data.GetData(DataFormats.FileDrop);
-            var folder = paths.FirstOrDefault(p => Directory.Exists(p));
-            if (folder != null) OpenFolder(folder);
-            else StatusBarText.Text = $"Dropped {paths.Length} file(s). Open a folder to manage.";
         }
 
         // ── RECENT FOLDERS ───────────────────────────────────────────
@@ -369,6 +343,12 @@ namespace File_manager.View
         }
 
         // ── CONTEXT MENU ─────────────────────────────────────────────
+        private void FileList_PreviewMouseRightButtonDown(object sender, MouseButtonEventArgs e)
+        {
+            var item = ItemsControl.ContainerFromElement(
+                FileList, e.OriginalSource as DependencyObject) as ListViewItem;
+            if (item != null) { item.IsSelected = true; e.Handled = false; }
+        }
         private void Ctx_Open(object sender, RoutedEventArgs e)
             => FileList_DoubleClick(sender, null!);
 
@@ -421,7 +401,6 @@ namespace File_manager.View
             catch (Exception ex) { MessageBox.Show(ex.Message, "Delete failed"); }
         }
 
-        // ── F2 = Rename, Delete = видалити ───────────────────────────
         private void FileList_KeyDown(object sender, System.Windows.Input.KeyEventArgs e)
         {
             if (e.Key == System.Windows.Input.Key.F2)
@@ -430,23 +409,62 @@ namespace File_manager.View
                 Ctx_Delete(sender, new RoutedEventArgs());
         }
 
-        // ── RECENT: відкрити нове вікно ──────────────────────────────
+        private void ExtFilter_TextChanged(object sender, TextChangedEventArgs e)
+        {
+            if (_viewSource == null) return;
+            var val = ExtFilter.Text.Trim().ToLower();
+            if (val.Length > 0 && !val.StartsWith("."))
+                val = "." + val;
+            _extFilter = val;
+            RefreshView();
+        }
+
+        private void BtnApprove_Click(object sender, RoutedEventArgs e)
+        {
+            if (_selectedAsset == null) return;
+            _viewModel.UpdateBaseline(_selectedAsset);
+            _selectedAsset.Status = FileStatus.Approved;
+            DetailStatus.Text = _selectedAsset.Status.ToString();
+            _viewModel.SaveAndCommit();
+            RefreshView();
+            StatusBarText.Text = $"Approved: {_selectedAsset.Name}";
+        }
+
+        private void BtnReject_Click(object sender, RoutedEventArgs e)
+        {
+            if (_selectedAsset == null) return;
+            _viewModel.UpdateBaseline(_selectedAsset);
+            _selectedAsset.Status = FileStatus.Rejected;
+            DetailStatus.Text = _selectedAsset.Status.ToString();
+            _viewModel.SaveAndCommit();
+            RefreshView();
+            StatusBarText.Text = $"Rejected: {_selectedAsset.Name}";
+        }
+
+        private void BtnDone_Click(object sender, RoutedEventArgs e)
+        {
+            if (_selectedAsset == null) return;
+            _viewModel.UpdateBaseline(_selectedAsset);
+            _selectedAsset.Status = FileStatus.Done;
+            DetailStatus.Text = _selectedAsset.Status.ToString();
+            _viewModel.SaveAndCommit();
+            RefreshView();
+            StatusBarText.Text = $"Done: {_selectedAsset.Name}";
+        }
+
         private void RecentFolder_NewWindow_Click(object sender, RoutedEventArgs e)
         {
             var path = (sender as MenuItem)?.Tag as string;
             if (string.IsNullOrEmpty(path) || !Directory.Exists(path)) return;
-
             var newWindow = new MainWindow();
             newWindow.Show();
             newWindow.OpenFolder(path);
         }
 
-        // ── RECENT: видалити з списку ─────────────────────────────────
         private void RecentFolder_Remove_Click(object sender, RoutedEventArgs e)
         {
             var path = (sender as MenuItem)?.Tag as string;
             if (string.IsNullOrEmpty(path)) return;
-
             _recentFolders.Remove(path);
             File.WriteAllLines(RecentFile, _recentFolders);
             RecentList.ItemsSource = null;

@@ -5,14 +5,12 @@ using System.Linq;
 
 namespace File_manager.Services
 {
-    public class SSVRepository : IRepository<IAsset>
+    // Реалізує IAssetRepository — зберігає всі папки в одному CSV
+    public class SSVRepository : IAssetRepository
     {
         private readonly string _filePath;
-
-        // Всі файли з усіх папок — ключ: FullPath
         private readonly Dictionary<string, IAsset> _cache =
             new(StringComparer.OrdinalIgnoreCase);
-
         private bool _csvLoaded = false;
 
         public SSVRepository(string filePath)
@@ -20,7 +18,6 @@ namespace File_manager.Services
             _filePath = filePath;
         }
 
-        // Завантажує CSV в кеш один раз при старті
         private void EnsureLoaded()
         {
             if (_csvLoaded) return;
@@ -55,29 +52,22 @@ namespace File_manager.Services
             }
         }
 
-        // Повертає збережені дані для конкретної папки
         public Dictionary<string, IAsset> LoadAsDictionary()
         {
             EnsureLoaded();
             return _cache;
         }
 
-        // Додає або оновлює запис — той самий об'єкт що і в Assets
         public void Save(IAsset item)
         {
             EnsureLoaded();
             _cache[item.FullPath] = item;
         }
 
-        // Видаляє запис (при видаленні файлу)
-        public void Remove(IAsset item)
-        {
-            _cache.Remove(item.FullPath);
-        }
+        public void Remove(IAsset item) => _cache.Remove(item.FullPath);
 
         public IEnumerable<IAsset> LoadAll() => _cache.Values;
 
-        // Записує ВСІ папки в CSV — не тільки поточну
         public void Commit()
         {
             var lines = _cache.Values.Select(a =>

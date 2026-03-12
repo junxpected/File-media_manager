@@ -1,0 +1,19 @@
+# Build output
+bin/
+obj/
+ 
+# Inno Setup output
+installer_output/
+ 
+# User-specific files
+*.user
+*.suo
+.vs/
+ 
+# Runtime data (генерується автоматично)
+assets.csv
+recent_folders.txt
+ 
+# OS
+.DS_Store
+Thumbs.db

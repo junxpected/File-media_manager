@@ -1,54 +1,68 @@
+using File_manager.Interfaces;
 using System.IO;
 
 namespace File_manager.Services
 {
-    /// <summary>
-    /// Визначає які папки/файли ігнорувати залежно від типу проекту.
-    /// Підтримує: Unity, Unreal, Node.js, .NET, Python, Git-репо.
-    /// </summary>
+    // Конкретні реалізації правил для кожного типу проекту
+    public class UnityIgnoreRule : IProjectIgnoreRule
+    {
+        private static readonly HashSet<string> _dirs = new(StringComparer.OrdinalIgnoreCase)
+            { "Library", "Temp", "Logs", "Build", "Builds", "UserSettings" };
+
+        public bool ShouldIgnoreDirectory(string dirName) => _dirs.Contains(dirName);
+    }
+
+    public class UnrealIgnoreRule : IProjectIgnoreRule
+    {
+        private static readonly HashSet<string> _dirs = new(StringComparer.OrdinalIgnoreCase)
+            { "Binaries", "Build", "Intermediate", "Saved", "DerivedDataCache" };
+
+        public bool ShouldIgnoreDirectory(string dirName) => _dirs.Contains(dirName);
+    }
+
+    public class NodeIgnoreRule : IProjectIgnoreRule
+    {
+        public bool ShouldIgnoreDirectory(string dirName) =>
+            dirName.Equals("node_modules", StringComparison.OrdinalIgnoreCase);
+    }
+
+    public class DotNetIgnoreRule : IProjectIgnoreRule
+    {
+        public bool ShouldIgnoreDirectory(string dirName) =>
+            dirName.Equals("bin", StringComparison.OrdinalIgnoreCase) ||
+            dirName.Equals("obj", StringComparison.OrdinalIgnoreCase);
+    }
+
+    public class PythonIgnoreRule : IProjectIgnoreRule
+    {
+        public bool ShouldIgnoreDirectory(string dirName) =>
+            dirName.Equals("__pycache__", StringComparison.OrdinalIgnoreCase) ||
+            dirName.Equals(".mypy_cache", StringComparison.OrdinalIgnoreCase);
+    }
+
     public static class IgnoreRules
     {
-        // Папки які ЗАВЖДИ ігноруємо незалежно від проекту
-        private static readonly HashSet<string> AlwaysIgnoreDirs = new(StringComparer.OrdinalIgnoreCase)
-        {
-            ".git", ".svn", ".hg",           // VCS
-            ".vs", ".idea", ".vscode",        // IDE
-            "__pycache__", ".mypy_cache",     // Python
-            "node_modules",                   // Node
-            "bin", "obj",                     // .NET build
-            ".gradle", ".kotlin",             // Android
-            "Pods",                           // iOS
-        };
+        private static readonly HashSet<string> _alwaysIgnoreDirs = new(StringComparer.OrdinalIgnoreCase)
+            { ".git", ".svn", ".hg", ".vs", ".idea", ".vscode", ".gradle", "Pods" };
 
-        // Папки специфічні для Unity
-        private static readonly HashSet<string> UnityIgnoreDirs = new(StringComparer.OrdinalIgnoreCase)
-        {
-            "Library", "Temp", "Logs", "obj",
-            "Build", "Builds", "UserSettings"
-        };
+        private static readonly HashSet<string> _alwaysIgnoreExts = new(StringComparer.OrdinalIgnoreCase)
+            { ".meta", ".tmp", ".temp", ".lock", ".suo", ".user", ".cache" };
 
-        // Папки для Unreal Engine
-        private static readonly HashSet<string> UnrealIgnoreDirs = new(StringComparer.OrdinalIgnoreCase)
+        // Маппінг типу проекту → правила (Open/Closed: додати новий тип = новий клас + рядок тут)
+        private static readonly Dictionary<ProjectType, IProjectIgnoreRule> _rules = new()
         {
-            "Binaries", "Build", "Intermediate", "Saved", "DerivedDataCache"
-        };
-
-        // Розширення які завжди ігноруємо
-        private static readonly HashSet<string> AlwaysIgnoreExts = new(StringComparer.OrdinalIgnoreCase)
-        {
-            ".meta",    // Unity meta files
-            ".tmp", ".temp",
-            ".lock",
-            ".DS_Store",
-            ".suo", ".user",
-            ".cache",
+            { ProjectType.Unity,  new UnityIgnoreRule()  },
+            { ProjectType.Unreal, new UnrealIgnoreRule() },
+            { ProjectType.Node,   new NodeIgnoreRule()   },
+            { ProjectType.DotNet, new DotNetIgnoreRule() },
+            { ProjectType.Python, new PythonIgnoreRule() },
         };
 
         public static ProjectType DetectProjectType(string rootPath)
         {
             if (File.Exists(Path.Combine(rootPath, "ProjectSettings", "ProjectVersion.txt")) ||
-                Directory.Exists(Path.Combine(rootPath, "Assets")) &&
-                Directory.Exists(Path.Combine(rootPath, "Library")))
+                (Directory.Exists(Path.Combine(rootPath, "Assets")) &&
+                 Directory.Exists(Path.Combine(rootPath, "Library"))))
                 return ProjectType.Unity;
 
             if (Directory.GetFiles(rootPath, "*.uproject", SearchOption.TopDirectoryOnly).Any())
@@ -71,24 +85,18 @@ namespace File_manager.Services
         public static bool ShouldIgnoreDirectory(string dirName, ProjectType projectType)
         {
             if (dirName.StartsWith(".")) return true;
-            if (AlwaysIgnoreDirs.Contains(dirName)) return true;
+            if (_alwaysIgnoreDirs.Contains(dirName)) return true;
 
-            return projectType switch
-            {
-                ProjectType.Unity  => UnityIgnoreDirs.Contains(dirName),
-                ProjectType.Unreal => UnrealIgnoreDirs.Contains(dirName),
-                _ => false
-            };
+            return _rules.TryGetValue(projectType, out var rule) &&
+                   rule.ShouldIgnoreDirectory(dirName);
         }
 
         public static bool ShouldIgnoreFile(string fileName)
         {
             if (fileName.StartsWith(".")) return true;
-            var ext = Path.GetExtension(fileName);
-            return AlwaysIgnoreExts.Contains(ext);
+            return _alwaysIgnoreExts.Contains(Path.GetExtension(fileName));
         }
 
-        /// <summary>Рекурсивно збирає файли з урахуванням правил ігнорування</summary>
         public static IEnumerable<string> GetFiles(string rootPath, ProjectType projectType,
                                                     CancellationToken ct = default)
         {
@@ -100,18 +108,14 @@ namespace File_manager.Services
                 ct.ThrowIfCancellationRequested();
                 var dir = queue.Dequeue();
 
-                // Файли в поточній папці
                 string[] files;
                 try { files = Directory.GetFiles(dir); }
                 catch { continue; }
 
                 foreach (var f in files)
-                {
                     if (!ShouldIgnoreFile(Path.GetFileName(f)))
                         yield return f;
-                }
 
-                // Підпапки
                 string[] subdirs;
                 try { subdirs = Directory.GetDirectories(dir); }
                 catch { continue; }

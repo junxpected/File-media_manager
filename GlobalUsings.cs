@@ -1,0 +1,9 @@
+global using MessageBox      = System.Windows.MessageBox;
+global using Application     = System.Windows.Application;
+global using Clipboard       = System.Windows.Clipboard;
+global using DataFormats     = System.Windows.DataFormats;
+global using DragDropEffects = System.Windows.DragDropEffects;
+global using DragEventArgs   = System.Windows.DragEventArgs;
+global using Button          = System.Windows.Controls.Button;
+global using MenuItem        = System.Windows.Controls.MenuItem;
+global using ListViewItem    = System.Windows.Controls.ListViewItem;
