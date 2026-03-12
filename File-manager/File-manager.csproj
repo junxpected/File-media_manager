@@ -13,5 +13,10 @@
   </ItemGroup>
   <ItemGroup>
     <Resource Include="icon.ico" />
+    <Resource Include="Assets\Approve.png" />
+    <Resource Include="Assets\Reject.png" />
+    <Resource Include="Assets\delete.png" />
+    <Resource Include="Assets\Save.png" />
+    <Resource Include="Assets\Done.png" />
   </ItemGroup>
 </Project>

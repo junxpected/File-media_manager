@@ -22,37 +22,6 @@ namespace File_manager.View
             => System.Windows.DependencyProperty.UnsetValue;
     }
 
-    public class ExtIconConverter : System.Windows.Data.IValueConverter
-    {
-        public object Convert(object value, Type t, object p, System.Globalization.CultureInfo c)
-        {
-            var ext = Path.GetExtension(value as string ?? "").ToLower();
-            return ext switch
-            {
-                ".mp4" or ".mov" or ".avi" or ".mkv" or ".wmv" => "🎬",
-                ".mp3" or ".wav" or ".flac" or ".aac" or ".ogg" => "🎵",
-                ".jpg" or ".jpeg" or ".png" or ".gif" or ".webp" or ".bmp" or ".svg" => "🖼️",
-                ".pdf"  => "📕",
-                ".doc" or ".docx" => "📝",
-                ".xls" or ".xlsx" => "📊",
-                ".ppt" or ".pptx" => "📋",
-                ".zip" or ".rar" or ".7z" or ".tar" or ".gz" => "📦",
-                ".exe" or ".msi" => "⚙️",
-                ".cs"  => "🔷",
-                ".py"  => "🐍",
-                ".js" or ".ts" => "🟨",
-                ".html" or ".htm" => "🌐",
-                ".css" => "🎨",
-                ".json" or ".xml" or ".yaml" or ".yml" => "📄",
-                ".txt" or ".md" or ".log" => "📃",
-                ".sql" => "🗃️",
-                ".psd" or ".ai" => "🎭",
-                _ => "📄"
-            };
-        }
-        public object ConvertBack(object v, Type t, object p, System.Globalization.CultureInfo c)
-            => System.Windows.DependencyProperty.UnsetValue;
-    }
 
     public partial class MainWindow : Window
     {
@@ -65,13 +34,14 @@ namespace File_manager.View
         private const string RecentFile = "recent_folders.txt";
         private ObservableCollection<string> _recentFolders = new();
         private TrayIcon? _tray;
+        private System.Threading.CancellationTokenSource? _searchDebounce;
 
         public MainWindow()
         {
             InitializeComponent();
 
-            var watcher    = new FileSystemMonitor();
-            var evaluator  = new StatusEvaluator();
+            var watcher = new FileSystemMonitor();
+            var evaluator = new StatusEvaluator();
             var repository = new SSVRepository("assets.csv");
 
             _viewModel = new AssetViewModel(watcher, repository, evaluator);
@@ -92,7 +62,7 @@ namespace File_manager.View
             Closing += (s, e) => { e.Cancel = true; Hide(); };
         }
 
-        // ── OPEN FOLDER ──────────────────────────────────────────────
+        //  openinho folderinho
         private void BtnOpen_Click(object sender, RoutedEventArgs e)
         {
             var dialog = new OpenFolderDialog { Title = "Select folder" };
@@ -129,9 +99,9 @@ namespace File_manager.View
 
             var projectLabel = _viewModel.CurrentProjectType switch
             {
-                File_manager.Services.ProjectType.Unity  => "🎮 Unity",
+                File_manager.Services.ProjectType.Unity => "🎮 Unity",
                 File_manager.Services.ProjectType.Unreal => "🎮 Unreal",
-                File_manager.Services.ProjectType.Node   => "📦 Node.js",
+                File_manager.Services.ProjectType.Node => "📦 Node.js",
                 File_manager.Services.ProjectType.DotNet => "🔷 .NET",
                 File_manager.Services.ProjectType.Python => "🐍 Python",
                 _ => "📁 Generic"
@@ -141,55 +111,59 @@ namespace File_manager.View
             BtnOpen.IsEnabled = true;
         }
 
-        // ── SELECTION ────────────────────────────────────────────────
+        //   selection
         private void FileList_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
             _selectedAsset = FileList.SelectedItem as IAsset;
             if (_selectedAsset == null) return;
 
-            DetailName.Text   = _selectedAsset.Name;
-            DetailPath.Text   = _selectedAsset.FullPath;
+            DetailName.Text = _selectedAsset.Name;
+            DetailPath.Text = _selectedAsset.FullPath;
             DetailStatus.Text = _selectedAsset.Status.ToString();
-            CommentBox.Text   = _selectedAsset.Comment ?? "";
+            CommentBox.Text = _selectedAsset.Comment ?? "";
 
             if (_selectedAsset is MediaAsset ma)
             {
-                DetailSize.Text   = ma.SizeFormatted;
+                DetailSize.Text = ma.SizeFormatted;
                 DetailFolder.Text = ma.FolderName;
             }
 
             var ext = Path.GetExtension(_selectedAsset.Name).ToLower();
             DetailIcon.Text = ext switch
             {
-                ".mp4" or ".mov" or ".avi" or ".mkv" => "🎬",
-                ".mp3" or ".wav" or ".flac"           => "🎵",
+                ".mp4" or ".mov" or ".avi" or ".mkv" => "🎬",  // to ne ya to ai
+                ".mp3" or ".wav" or ".flac" => "🎵",
                 ".jpg" or ".jpeg" or ".png" or ".gif" => "🖼️",
-                ".pdf"                                => "📕",
-                ".docx" or ".doc"                     => "📝",
-                ".zip" or ".rar" or ".7z"             => "📦",
+                ".pdf" => "📕",
+                ".docx" or ".doc" => "📝",
+                ".zip" or ".rar" or ".7z" => "📦",
                 _ => "📄"
             };
         }
 
-        // ── SEARCH ───────────────────────────────────────────────────
-        private void SearchBox_TextChanged(object sender, TextChangedEventArgs e)
+        // POshuk
+        private async void SearchBox_TextChanged(object sender, TextChangedEventArgs e)
         {
-            _searchQuery = SearchBox.Text.Trim().ToLower();
-            RefreshView();
+            _searchDebounce?.Cancel();
+            _searchDebounce = new System.Threading.CancellationTokenSource();
+            try
+            {
+                await Task.Delay(200, _searchDebounce.Token);
+                _searchQuery = SearchBox.Text.Trim().ToLower();
+                RefreshView();
+            }
+            catch (TaskCanceledException) { }
         }
 
-        // ── STATUS FILTERS ───────────────────────────────────────────
-        private void FilterAll_Click(object sender, RoutedEventArgs e)      { _statusFilter = null;                RefreshView(); }
-        private void FilterNew_Click(object sender, RoutedEventArgs e)      { _statusFilter = FileStatus.New;      RefreshView(); }
+        // filter statusiv
+        private void FilterAll_Click(object sender, RoutedEventArgs e) { _statusFilter = null; RefreshView(); }
+        private void FilterNew_Click(object sender, RoutedEventArgs e) { _statusFilter = FileStatus.New; RefreshView(); }
         private void FilterModified_Click(object sender, RoutedEventArgs e) { _statusFilter = FileStatus.Modified; RefreshView(); }
-        private void FilterMissing_Click(object sender, RoutedEventArgs e)  { _statusFilter = FileStatus.Missing;  RefreshView(); }
+        private void FilterMissing_Click(object sender, RoutedEventArgs e) { _statusFilter = FileStatus.Missing; RefreshView(); }
         private void FilterApproved_Click(object sender, RoutedEventArgs e) { _statusFilter = FileStatus.Approved; RefreshView(); }
         private void FilterRejected_Click(object sender, RoutedEventArgs e) { _statusFilter = FileStatus.Rejected; RefreshView(); }
-        private void FilterDone_Click(object sender, RoutedEventArgs e)     { _statusFilter = FileStatus.Done;     RefreshView(); }
+        private void FilterDone_Click(object sender, RoutedEventArgs e) { _statusFilter = FileStatus.Done; RefreshView(); }
 
-        // ── EXT FILTER ───────────────────────────────────────────────
-
-        // ── FILTER LOGIC ─────────────────────────────────────────────
         private void ApplyFilters(object sender, FilterEventArgs e)
         {
             if (e.Item is not IAsset asset) { e.Accepted = false; return; }
@@ -217,26 +191,41 @@ namespace File_manager.View
         {
             _viewSource?.View?.Refresh();
             UpdateStats();
-            var count = _viewSource?.View?.Cast<object>().Count() ?? 0;
-            StatusBarCount.Text = $"{count} files";
-            if (_viewModel != null)
-                EmptyState.Visibility = _viewModel.Assets.Count == 0
-                    ? Visibility.Visible : Visibility.Collapsed;
+            // НЕ використовуй Cast<object>().Count() — це O(n) зайвий раз
+            StatusBarCount.Text = $"{_viewModel.Assets.Count} files";
+            EmptyState.Visibility = _viewModel.Assets.Count == 0
+                ? Visibility.Visible : Visibility.Collapsed;
         }
 
-        // ── STATS ────────────────────────────────────────────────────
+        // update statusiv
         private void UpdateStats()
         {
-            var all = _viewModel.Assets;
-            StatsTotal.Text    = all.Count.ToString();
-            StatsNew.Text      = all.Count(a => a.Status == FileStatus.New).ToString();
-            StatsModified.Text = all.Count(a => a.Status == FileStatus.Modified).ToString();
-            StatsMissing.Text  = all.Count(a => a.Status == FileStatus.Missing).ToString();
-            StatsApproved.Text = all.Count(a => a.Status == FileStatus.Approved).ToString();
-            StatsDone.Text     = all.Count(a => a.Status == FileStatus.Done).ToString();
+            int total = 0, newC = 0, mod = 0, miss = 0, appr = 0, done = 0;
+            foreach (var a in _viewModel.Assets)
+            {
+                total++;
+                switch (a.Status)
+                {
+                    case FileStatus.New: newC++; break;
+
+                    case FileStatus.Modified: mod++; break;
+
+                    case FileStatus.Missing: miss++; break;
+
+                    case FileStatus.Approved: appr++; break;
+
+                    case FileStatus.Done: done++; break;
+                }
+            }
+            StatsTotal.Text = total.ToString();
+            StatsNew.Text = newC.ToString();
+            StatsModified.Text = mod.ToString();
+            StatsMissing.Text = miss.ToString();
+            StatsApproved.Text = appr.ToString();
+            StatsDone.Text = done.ToString();
         }
 
-        // ── ACTIONS ──────────────────────────────────────────────────
+        // batonni(ne batoni a knopki)
 
 
         private void BtnSaveComment_Click(object sender, RoutedEventArgs e)
@@ -280,7 +269,7 @@ namespace File_manager.View
             catch (Exception ex) { MessageBox.Show(ex.Message, "Delete failed"); }
         }
 
-        // ── DOUBLE CLICK ─────────────────────────────────────────────
+        // double click = open folder in prov1dnik
         private void FileList_DoubleClick(object sender, MouseButtonEventArgs e)
         {
             if (_selectedAsset == null) return;
@@ -295,7 +284,7 @@ namespace File_manager.View
             catch (Exception ex) { StatusBarText.Text = $"Cannot open: {ex.Message}"; }
         }
 
-        // ── RECENT FOLDERS ───────────────────────────────────────────
+        // last open folders(projects)
         private void LoadRecentFolders()
         {
             _recentFolders.Clear();
@@ -322,7 +311,6 @@ namespace File_manager.View
                 OpenFolder(path);
         }
 
-        // ── COLUMN WIDTH TRACKING ────────────────────────────────────
         private void HookColumnWidths()
         {
             var gv = (GridView)FileList.View;
@@ -342,7 +330,7 @@ namespace File_manager.View
                 FileList.Tag = Math.Max(0, gv.Columns[1].Width - 16);
         }
 
-        // ── CONTEXT MENU ─────────────────────────────────────────────
+        // right_click = context menu 
         private void FileList_PreviewMouseRightButtonDown(object sender, MouseButtonEventArgs e)
         {
             var item = ItemsControl.ContainerFromElement(
@@ -373,7 +361,7 @@ namespace File_manager.View
             {
                 try
                 {
-                    var dir     = Path.GetDirectoryName(_selectedAsset.FullPath)!;
+                    var dir = Path.GetDirectoryName(_selectedAsset.FullPath)!;
                     var newPath = Path.Combine(dir, dialog.NewName);
                     File.Move(_selectedAsset.FullPath, newPath);
                     _selectedAsset.FullPath = newPath;

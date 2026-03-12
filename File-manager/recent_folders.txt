@@ -1,5 +1,7 @@
-D:\OOP Shakh2
-D:\Documental
-D:\Montserrat
-D:\Passat
-D:\hex-magic
+C:\Users\megas\Python_Learn
+C:\Users\megas\hltv_r
+C:\Users\megas\hex-magic1
+C:\Users\megas\C##
+C:\Users\megas\dfg
+C:\Users\megas\Operation
+C:\Users\megas\Python_Learn\pr17

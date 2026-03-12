@@ -13,14 +13,24 @@ namespace File_manager.Services
         {
             _watcher = new FileSystemWatcher(path);
 
+            _watcher.NotifyFilter = NotifyFilters.LastWrite
+                                  | NotifyFilters.Size
+                                  | NotifyFilters.FileName
+                                  | NotifyFilters.DirectoryName;
+
+            _watcher.IncludeSubdirectories = true;
+            _watcher.InternalBufferSize = 65536;
+            // збільшуємо буфер для великих папок
+
             _watcher.Changed += (s, e) => OnFileSystemChanged?.Invoke(e);
             _watcher.Created += (s, e) => OnFileSystemChanged?.Invoke(e);
             _watcher.Deleted += (s, e) => OnFileSystemChanged?.Invoke(e);
+            _watcher.Renamed += (s, e) => OnFileSystemChanged?.Invoke(e);
             _watcher.EnableRaisingEvents = true;
         }
-       
 
-        public void Stop() 
+
+        public void Stop()
         {
             _watcher?.Dispose();
         }

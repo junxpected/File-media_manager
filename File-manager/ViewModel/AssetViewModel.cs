@@ -23,9 +23,9 @@ namespace File_manager.ViewModels
 
         public AssetViewModel(IFileWatcher watcher, IAssetRepository repository, IStatusEvaluator evaluator)
         {
-            _watcher    = watcher;
+            _watcher = watcher;
             _repository = repository;
-            _evaluator  = evaluator;
+            _evaluator = evaluator;
             _watcher.OnFileSystemChanged += HandleFileChange;
         }
 
@@ -43,7 +43,10 @@ namespace File_manager.ViewModels
             CurrentProjectType = await Task.Run(() => IgnoreRules.DetectProjectType(path), ct);
 
             Dictionary<string, IAsset> saved;
-            try { saved = await Task.Run(() => _repository.LoadAsDictionary(), ct); }
+            try
+            {
+                saved = await Task.Run(() => _repository.LoadAsDictionary(), ct);
+            }
             catch (OperationCanceledException) { OnProgress?.Invoke(null); return; }
 
             List<string> files;
@@ -52,7 +55,11 @@ namespace File_manager.ViewModels
                 files = await Task.Run(() =>
                     IgnoreRules.GetFiles(path, CurrentProjectType, ct).ToList(), ct);
             }
-            catch (OperationCanceledException) { OnProgress?.Invoke(null); return; }
+            catch (OperationCanceledException)
+            {
+                OnProgress?.Invoke(null);
+                return;
+            }
             catch (Exception ex)
             {
                 Application.Current?.Dispatcher.Invoke(() =>
@@ -62,7 +69,7 @@ namespace File_manager.ViewModels
             }
 
             var total = files.Count;
-            var batch = new List<MediaAsset>(100);
+            var batch = new List<MediaAsset>(250);
             int processed = 0;
 
             foreach (var filePath in files)
@@ -77,13 +84,18 @@ namespace File_manager.ViewModels
                     var toAdd = batch.ToList();
                     batch.Clear();
 
+                    // Спочатку зберігаємо на диск — в фоновому потоці
+                    await Task.Run(() =>
+                    {
+                        foreach (var a in toAdd)
+                            _repository.Save(a);
+                    }, ct);
+
+                    // Потім додаємо в UI
                     await Application.Current.Dispatcher.InvokeAsync(() =>
                     {
                         foreach (var a in toAdd)
-                        {
                             Assets.Add(a);
-                            _repository.Save(a);
-                        }
                         OnProgress?.Invoke(total > 0 ? processed * 100 / total : 100);
                     });
 
@@ -99,8 +111,7 @@ namespace File_manager.ViewModels
         {
             if (saved.TryGetValue(filePath, out var existing) && existing is MediaAsset asset)
             {
-                asset.Status = _evaluator.ResolveStatus(
-                    new FileInfo(filePath), asset.Baseline, asset.Status);
+                asset.Status = _evaluator.ResolveStatus(new FileInfo(filePath), asset.Baseline, asset.Status);
                 return asset;
             }
 
@@ -109,14 +120,14 @@ namespace File_manager.ViewModels
             {
                 RegisteredTime = fi.Exists ? fi.LastWriteTime : DateTime.Now,
                 RegisteredSize = fi.Exists ? fi.Length : 0,
-                FirstSeenTime  = fi.Exists ? fi.CreationTime : DateTime.Now
+                FirstSeenTime = fi.Exists ? fi.CreationTime : DateTime.Now
             };
             return new MediaAsset
             {
                 FullPath = filePath,
                 Baseline = baseline,
-                Status   = _evaluator.CalculateStatus(fi, baseline),
-                Comment  = string.Empty
+                Status = _evaluator.CalculateStatus(fi, baseline),
+                Comment = string.Empty
             };
         }
 
@@ -137,6 +148,23 @@ namespace File_manager.ViewModels
                 {
                     var existing = Assets.FirstOrDefault(a => a.FullPath == e.FullPath);
 
+                    // Файл видалено через зовнішній провідник
+                    if (e.ChangeType == WatcherChangeTypes.Deleted)
+                    {
+                        if (existing == null) return;
+
+                        // Modified — залишаємо з Missing, New — видаляємо
+                        if (existing.Status == FileStatus.New)
+                            Assets.Remove(existing);
+                        else
+                            existing.Status = FileStatus.Missing;
+
+                        _repository.Save(existing);
+                        _repository.Commit();
+                        return;
+                    }
+
+                    // Файл створено або змінено
                     if (existing == null)
                     {
                         var info = new FileInfo(e.FullPath);
@@ -146,14 +174,14 @@ namespace File_manager.ViewModels
                         {
                             RegisteredTime = info.LastWriteTime,
                             RegisteredSize = info.Length,
-                            FirstSeenTime  = DateTime.Now
+                            FirstSeenTime = DateTime.Now
                         };
                         var newAsset = new MediaAsset
                         {
                             FullPath = e.FullPath,
                             Baseline = baseline,
-                            Status   = FileStatus.New,
-                            Comment  = string.Empty
+                            Status = FileStatus.New,
+                            Comment = string.Empty
                         };
                         Assets.Add(newAsset);
                         _repository.Save(newAsset);
@@ -161,8 +189,17 @@ namespace File_manager.ViewModels
                     }
                     else
                     {
-                        existing.Status = _evaluator.ResolveStatus(
-                            new FileInfo(e.FullPath), existing.Baseline, existing.Status);
+                        var info = new FileInfo(e.FullPath);
+                        if (!info.Exists)
+                        {
+                            existing.Status = FileStatus.Missing;
+                        }
+                        else
+                        {
+                            existing.Status = _evaluator.ResolveStatus(
+                                info, existing.Baseline, existing.Status);
+                        }
+                        _repository.Save(existing);
                         _repository.Commit();
                     }
                 }
@@ -174,7 +211,8 @@ namespace File_manager.ViewModels
         public void UpdateBaseline(IAsset asset)
         {
             var info = new FileInfo(asset.FullPath);
-            if (!info.Exists) return;
+            if (!info.Exists)
+                return;
             asset.Baseline.RegisteredTime = info.LastWriteTime;
             asset.Baseline.RegisteredSize = info.Length;
         }

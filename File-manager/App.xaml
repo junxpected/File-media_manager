@@ -4,6 +4,6 @@
              xmlns:local="clr-namespace:File_manager"
              StartupUri="view/MainWindow.xaml">
     <Application.Resources>
-         
+
     </Application.Resources>
 </Application>
