@@ -10,7 +10,6 @@ namespace File_manager.Tests
     {
         private readonly StatusEvaluator _sut = new();
 
-        // ── Helpers ─────────────────────────────────────────────────
         private static AssetMetadata Baseline(
             DateTime? registeredTime = null,
             long size = 100,
@@ -18,10 +17,9 @@ namespace File_manager.Tests
         {
             RegisteredTime = registeredTime ?? DateTime.Now.AddSeconds(-10),
             RegisteredSize = size,
-            FirstSeenTime  = firstSeen  ?? DateTime.Now
+            FirstSeenTime  = firstSeen ?? DateTime.Now
         };
 
-        // ── CalculateStatus ──────────────────────────────────────────
 
         [Fact]
         public void CalculateStatus_FileNotExists_ReturnsMissing()
@@ -32,21 +30,7 @@ namespace File_manager.Tests
         }
 
         [Fact]
-        public void CalculateStatus_NewFile_ReturnsNew()
-        {
-            var tmp = Path.GetTempFileName();
-            try
-            {
-                var fi       = new FileInfo(tmp);
-                var baseline = Baseline(fi.LastWriteTime, fi.Length, DateTime.Now);
-                var result   = _sut.CalculateStatus(fi, baseline);
-                Assert.Equal(FileStatus.New, result);
-            }
-            finally { File.Delete(tmp); }
-        }
-
-        [Fact]
-        public void CalculateStatus_OldUnchangedFile_ReturnsLocked()
+        public void CalculateStatus_OldUnchangedFile_ReturnsNew()
         {
             var tmp = Path.GetTempFileName();
             try
@@ -55,12 +39,40 @@ namespace File_manager.Tests
                 var baseline = Baseline(fi.LastWriteTime, fi.Length,
                     firstSeen: DateTime.Now.AddDays(-10));
                 var result   = _sut.CalculateStatus(fi, baseline);
-                Assert.Equal(FileStatus.Locked, result);
+                Assert.Equal(FileStatus.New, result);
             }
             finally { File.Delete(tmp); }
         }
 
-        // ── ResolveStatus ────────────────────────────────────────────
+        [Fact]
+        public void CalculateStatus_SizeChanged_ReturnsModified()
+        {
+            var tmp = Path.GetTempFileName();
+            try
+            {
+                File.WriteAllText(tmp, "some content");
+                var fi       = new FileInfo(tmp);
+                var baseline = Baseline(fi.LastWriteTime, size: 1);
+                var result   = _sut.CalculateStatus(fi, baseline);
+                Assert.Equal(FileStatus.Modified, result);
+            }
+            finally { File.Delete(tmp); }
+        }
+
+        [Fact]
+        public void CalculateStatus_TimeChanged_ReturnsModified()
+        {
+            var tmp = Path.GetTempFileName();
+            try
+            {
+                var fi       = new FileInfo(tmp);
+                var baseline = Baseline(DateTime.Now.AddHours(-2), fi.Length);
+                var result   = _sut.CalculateStatus(fi, baseline);
+                Assert.Equal(FileStatus.Modified, result);
+            }
+            finally { File.Delete(tmp); }
+        }
+
 
         [Fact]
         public void ResolveStatus_FileMissing_ReturnsMissing()
@@ -78,7 +90,6 @@ namespace File_manager.Tests
             {
                 File.WriteAllText(tmp, "hello world");
                 var fi       = new FileInfo(tmp);
-                // baseline має інший розмір
                 var baseline = Baseline(fi.LastWriteTime, size: 1);
                 var result   = _sut.ResolveStatus(fi, baseline, FileStatus.Approved);
                 Assert.Equal(FileStatus.Modified, result);
@@ -93,7 +104,6 @@ namespace File_manager.Tests
             try
             {
                 var fi       = new FileInfo(tmp);
-                // baseline має старіший час
                 var baseline = Baseline(DateTime.Now.AddHours(-2), fi.Length);
                 var result   = _sut.ResolveStatus(fi, baseline, FileStatus.New);
                 Assert.Equal(FileStatus.Modified, result);
@@ -147,15 +157,15 @@ namespace File_manager.Tests
         }
 
         [Fact]
-        public void ResolveStatus_YoungUnchangedFile_ReturnsNew()
+        public void ResolveStatus_OldUnchangedFile_ReturnsNew()
         {
             var tmp = Path.GetTempFileName();
             try
             {
                 var fi       = new FileInfo(tmp);
                 var baseline = Baseline(fi.LastWriteTime, fi.Length,
-                    firstSeen: DateTime.Now);
-                var result   = _sut.ResolveStatus(fi, baseline, FileStatus.Locked);
+                    firstSeen: DateTime.Now.AddDays(-10));
+                var result   = _sut.ResolveStatus(fi, baseline, FileStatus.New);
                 Assert.Equal(FileStatus.New, result);
             }
             finally { File.Delete(tmp); }
@@ -171,7 +181,6 @@ namespace File_manager.Tests
                 var fi       = new FileInfo(tmp);
                 var baseline = Baseline(fi.LastWriteTime, size: 1);
                 var result   = _sut.ResolveStatus(fi, baseline, FileStatus.Approved);
-                // Modified має вищий пріоритет навіть над Approved
                 Assert.Equal(FileStatus.Modified, result);
             }
             finally { File.Delete(tmp); }
