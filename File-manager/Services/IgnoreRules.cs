@@ -3,12 +3,10 @@ using System.IO;
 
 namespace File_manager.Services
 {
-    // Конкретні реалізації правил для кожного типу проекту
     public class UnityIgnoreRule : IProjectIgnoreRule
     {
         private static readonly HashSet<string> _dirs = new(StringComparer.OrdinalIgnoreCase)
             { "Library", "Temp", "Logs", "Build", "Builds", "UserSettings" };
-
         public bool ShouldIgnoreDirectory(string dirName) => _dirs.Contains(dirName);
     }
 
@@ -16,7 +14,6 @@ namespace File_manager.Services
     {
         private static readonly HashSet<string> _dirs = new(StringComparer.OrdinalIgnoreCase)
             { "Binaries", "Build", "Intermediate", "Saved", "DerivedDataCache" };
-
         public bool ShouldIgnoreDirectory(string dirName) => _dirs.Contains(dirName);
     }
 
@@ -48,7 +45,6 @@ namespace File_manager.Services
         private static readonly HashSet<string> _alwaysIgnoreExts = new(StringComparer.OrdinalIgnoreCase)
             { ".meta", ".tmp", ".temp", ".lock", ".suo", ".user", ".cache" };
 
-        // Маппінг типу проекту → правила (Open/Closed: додати новий тип = новий клас + рядок тут)
         private static readonly Dictionary<ProjectType, IProjectIgnoreRule> _rules = new()
         {
             { ProjectType.Unity,  new UnityIgnoreRule()  },
@@ -86,15 +82,14 @@ namespace File_manager.Services
         {
             if (dirName.StartsWith(".")) return true;
             if (_alwaysIgnoreDirs.Contains(dirName)) return true;
-
             return _rules.TryGetValue(projectType, out var rule) &&
                    rule.ShouldIgnoreDirectory(dirName);
         }
 
-        public static bool ShouldIgnoreFile(string fileName)
+        public static bool ShouldIgnoreFile(string name)
         {
-            if (fileName.StartsWith(".")) return true;
-            return _alwaysIgnoreExts.Contains(Path.GetExtension(fileName));
+            var ext = Path.GetExtension(name).ToLower();
+            return _alwaysIgnoreExts.Contains(ext);
         }
 
         public static IEnumerable<string> GetFiles(string rootPath, ProjectType projectType,

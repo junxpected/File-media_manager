@@ -1,7 +1,3 @@
-C:\Users\megas\Python_Learn
-C:\Users\megas\hltv_r
-C:\Users\megas\hex-magic1
-C:\Users\megas\C##
-C:\Users\megas\dfg
-C:\Users\megas\Operation
-C:\Users\megas\Python_Learn\pr17
+D:\OOP Shakh2
+D:\Sauna
+D:\Documental

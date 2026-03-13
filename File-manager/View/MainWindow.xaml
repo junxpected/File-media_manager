@@ -717,45 +717,8 @@
 
                         <Separator Margin="0,12,0,12"/>
 
-                        <TextBlock Text="FILE TYPE"
-                                   Foreground="#666666"
-                                   FontSize="10"
-                                   FontWeight="Bold"
-                                   Margin="2,0,0,8"/>
-                        <Border Background="#3C3C3C"
-                                BorderBrush="#555555"
-                                BorderThickness="1"
-                                CornerRadius="4">
-                            <Grid>
-                                <TextBox x:Name="ExtFilter"
-                                         TextChanged="ExtFilter_TextChanged"
-                                         Background="Transparent"
-                                         Foreground="#CCCCCC"
-                                         BorderThickness="0"
-                                         Padding="8,6"
-                                         FontSize="12"
-                                         CaretBrush="#007ACC"/>
-                                <TextBlock Text=".py, .png, .cs..."
-                                           Foreground="#555555"
-                                           FontSize="12"
-                                           Padding="9,6"
-                                           IsHitTestVisible="False">
-                                    <TextBlock.Style>
-                                        <Style TargetType="TextBlock">
-                                            <Setter Property="Visibility"
-                                                    Value="Collapsed"/>
-                                            <Style.Triggers>
-                                                <DataTrigger Binding="{Binding Text, ElementName=ExtFilter}"
-                                                             Value="">
-                                                    <Setter Property="Visibility"
-                                                            Value="Visible"/>
-                                                </DataTrigger>
-                                            </Style.Triggers>
-                                        </Style>
-                                    </TextBlock.Style>
-                                </TextBlock>
-                            </Grid>
-                        </Border>
+                    <!--FILE TYPE mb remove-->
+                        
 
                         <Separator Margin="0,12,0,12"/>
 

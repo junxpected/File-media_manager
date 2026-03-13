@@ -136,78 +136,95 @@ namespace File_manager.ViewModels
             _debouncer.Debounce(e.FullPath, () => ProcessFileChange(e));
         }
 
+        
+
+        private static readonly string[] _systemExtensions = { ".pek", ".tmp", ".bak", ".cache" };
+
+        private bool TryHandleSystemFile(string fullPath)
+        {
+            var ext = Path.GetExtension(fullPath).ToLower();
+            if (!_systemExtensions.Contains(ext)) return false;
+
+            // IMG_4435.MOV 48000.pek → шукаємо IMG_4435.MOV
+            var fileName = Path.GetFileName(fullPath);
+            var parentName = fileName.Split(' ')[0]; // "IMG_4435.MOV"
+            
+            var parent = Assets.FirstOrDefault(a => 
+                Path.GetFileName(a.FullPath).Equals(parentName, 
+                StringComparison.OrdinalIgnoreCase));
+
+            if (parent != null && parent.Status == FileStatus.New)
+            {
+                parent.Status = FileStatus.Modified;
+                _repository.Save(parent);
+                _repository.Commit();
+            }
+
+            return true;
+        }
         private void ProcessFileChange(FileSystemEventArgs e)
         {
-            if (IgnoreRules.ShouldIgnoreFile(Path.GetFileName(e.FullPath))) return;
-            var dirName = Path.GetFileName(Path.GetDirectoryName(e.FullPath) ?? "");
-            if (IgnoreRules.ShouldIgnoreDirectory(dirName, CurrentProjectType)) return;
+        if (IgnoreRules.ShouldIgnoreFile(Path.GetFileName(e.FullPath))) return;
+        var dirName = Path.GetFileName(Path.GetDirectoryName(e.FullPath) ?? "");
+        if (IgnoreRules.ShouldIgnoreDirectory(dirName, CurrentProjectType)) return;
 
-            Application.Current?.Dispatcher.BeginInvoke(DispatcherPriority.Normal, () =>
+        Application.Current?.Dispatcher.BeginInvoke(DispatcherPriority.Normal, () =>
+        {
+            try
             {
-                try
+                if (TryHandleSystemFile(e.FullPath)) return;
+
+                var existing = Assets.FirstOrDefault(a => a.FullPath == e.FullPath);
+
+                if (e.ChangeType == WatcherChangeTypes.Deleted)
                 {
-                    var existing = Assets.FirstOrDefault(a => a.FullPath == e.FullPath);
-
-                    // Файл видалено через зовнішній провідник
-                    if (e.ChangeType == WatcherChangeTypes.Deleted)
-                    {
-                        if (existing == null) return;
-
-                        // Modified — залишаємо з Missing, New — видаляємо
-                        if (existing.Status == FileStatus.New)
-                            Assets.Remove(existing);
-                        else
-                            existing.Status = FileStatus.Missing;
-
-                        _repository.Save(existing);
-                        _repository.Commit();
-                        return;
-                    }
-
-                    // Файл створено або змінено
-                    if (existing == null)
-                    {
-                        var info = new FileInfo(e.FullPath);
-                        if (!info.Exists) return;
-
-                        var baseline = new AssetMetadata
-                        {
-                            RegisteredTime = info.LastWriteTime,
-                            RegisteredSize = info.Length,
-                            FirstSeenTime = DateTime.Now
-                        };
-                        var newAsset = new MediaAsset
-                        {
-                            FullPath = e.FullPath,
-                            Baseline = baseline,
-                            Status = FileStatus.New,
-                            Comment = string.Empty
-                        };
-                        Assets.Add(newAsset);
-                        _repository.Save(newAsset);
-                        _repository.Commit();
-                    }
+                    if (existing == null) return;
+                    if (existing.Status == FileStatus.New)
+                        Assets.Remove(existing);
                     else
-                    {
-                        var info = new FileInfo(e.FullPath);
-                        if (!info.Exists)
-                        {
-                            existing.Status = FileStatus.Missing;
-                        }
-                        else
-                        {
-                            existing.Status = _evaluator.ResolveStatus(
-                                info, existing.Baseline, existing.Status);
-                        }
-                        _repository.Save(existing);
-                        _repository.Commit();
-                    }
+                        existing.Status = FileStatus.Missing;
+                    _repository.Save(existing);
+                    _repository.Commit();
+                    return;
                 }
-                catch { }
-            });
-        }
 
-        // Оновлює baseline при ручному підтвердженні (Approve/Reject/Done)
+                if (existing == null)
+                {
+                    var info = new FileInfo(e.FullPath);
+                    if (!info.Exists) return;
+                    var baseline = new AssetMetadata
+                    {
+                        RegisteredTime = info.LastWriteTime,
+                        RegisteredSize = info.Length,
+                        FirstSeenTime = DateTime.Now
+                    };
+                    var newAsset = new MediaAsset
+                    {
+                        FullPath = e.FullPath,
+                        Baseline = baseline,
+                        Status = FileStatus.New,
+                        Comment = string.Empty
+                    };
+                    Assets.Add(newAsset);
+                    _repository.Save(newAsset);
+                    _repository.Commit();
+                }
+                else
+                {
+                    var info = new FileInfo(e.FullPath);
+                    if (!info.Exists)
+                        existing.Status = FileStatus.Missing;
+                    else
+                        existing.Status = _evaluator.ResolveStatus(
+                            info, existing.Baseline, existing.Status);
+                    _repository.Save(existing);
+                    _repository.Commit();
+                }
+            }
+            catch { }
+        });
+    }
+
         public void UpdateBaseline(IAsset asset)
         {
             var info = new FileInfo(asset.FullPath);
@@ -215,7 +232,7 @@ namespace File_manager.ViewModels
                 return;
             asset.Baseline.RegisteredTime = info.LastWriteTime;
             asset.Baseline.RegisteredSize = info.Length;
-        }
+        } // Оновлює baseline при ручному підтвердженні (Approve/Reject/Done)
 
         public void SaveAndCommit() => _repository.Commit();
 

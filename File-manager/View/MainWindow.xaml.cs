@@ -16,10 +16,8 @@ namespace File_manager.View
 {
     public class ColWidthConverter : System.Windows.Data.IValueConverter
     {
-        public object Convert(object value, Type t, object p, System.Globalization.CultureInfo c)
-            => value is double w ? Math.Max(0, w - 20) : 0.0;
-        public object ConvertBack(object v, Type t, object p, System.Globalization.CultureInfo c)
-            => System.Windows.DependencyProperty.UnsetValue;
+        public object Convert(object value, Type t, object p, System.Globalization.CultureInfo c) => value is double w ? Math.Max(0, w - 20) : 0.0;
+        public object ConvertBack(object v, Type t, object p, System.Globalization.CultureInfo c) => System.Windows.DependencyProperty.UnsetValue;
     }
 
 
@@ -28,7 +26,6 @@ namespace File_manager.View
         private AssetViewModel _viewModel;
         private CollectionViewSource _viewSource;
         private FileStatus? _statusFilter = null;
-        private string _extFilter = "";
         private string _searchQuery = "";
         private IAsset? _selectedAsset = null;
         private const string RecentFile = "recent_folders.txt";
@@ -164,24 +161,27 @@ namespace File_manager.View
         private void FilterRejected_Click(object sender, RoutedEventArgs e) { _statusFilter = FileStatus.Rejected; RefreshView(); }
         private void FilterDone_Click(object sender, RoutedEventArgs e) { _statusFilter = FileStatus.Done; RefreshView(); }
 
+
+
+        /// mb remove
         private void ApplyFilters(object sender, FilterEventArgs e)
         {
-            if (e.Item is not IAsset asset) { e.Accepted = false; return; }
+            if (e.Item is not IAsset asset)
+            { 
+                e.Accepted = false; return;
+            }
 
             if (_statusFilter.HasValue && asset.Status != _statusFilter.Value)
-            { e.Accepted = false; return; }
-
-            if (!string.IsNullOrEmpty(_extFilter))
-            {
-                var ext = Path.GetExtension(asset.Name).ToLower();
-                if (ext != _extFilter.ToLower()) { e.Accepted = false; return; }
+            { 
+                e.Accepted = false; return;
             }
 
             if (!string.IsNullOrEmpty(_searchQuery))
             {
-                if (!asset.Name.ToLower().Contains(_searchQuery) &&
-                    !asset.FullPath.ToLower().Contains(_searchQuery))
-                { e.Accepted = false; return; }
+                if (!asset.Name.ToLower().Contains(_searchQuery) && !asset.FullPath.ToLower().Contains(_searchQuery))
+                { 
+                    e.Accepted = false; return;
+                }
             }
 
             e.Accepted = true;
@@ -191,7 +191,7 @@ namespace File_manager.View
         {
             _viewSource?.View?.Refresh();
             UpdateStats();
-            // НЕ використовуй Cast<object>().Count() — це O(n) зайвий раз
+            
             StatusBarCount.Text = $"{_viewModel.Assets.Count} files";
             EmptyState.Visibility = _viewModel.Assets.Count == 0
                 ? Visibility.Visible : Visibility.Collapsed;
@@ -397,15 +397,15 @@ namespace File_manager.View
                 Ctx_Delete(sender, new RoutedEventArgs());
         }
 
-        private void ExtFilter_TextChanged(object sender, TextChangedEventArgs e)
-        {
-            if (_viewSource == null) return;
-            var val = ExtFilter.Text.Trim().ToLower();
-            if (val.Length > 0 && !val.StartsWith("."))
-                val = "." + val;
-            _extFilter = val;
-            RefreshView();
-        }
+        // private void ExtFilter_TextChanged(object sender, TextChangedEventArgs e)
+        // {
+        //     if (_viewSource == null) return;
+        //     var val = ExtFilter.Text.Trim().ToLower();
+        //     if (val.Length > 0 && !val.StartsWith("."))
+        //         val = "." + val;
+        //     _extFilter = val;
+        //     RefreshView();
+        // }
 
         private void BtnApprove_Click(object sender, RoutedEventArgs e)
         {
