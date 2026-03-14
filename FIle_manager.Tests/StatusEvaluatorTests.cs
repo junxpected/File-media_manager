@@ -11,8 +11,8 @@ namespace File_manager.Tests
         private readonly StatusEvaluator _sut = new();
 
         private static AssetMetadata Baseline(
-            DateTime? registeredTime = null,
             long size = 100,
+            DateTime? registeredTime = null,
             DateTime? firstSeen = null) => new()
         {
             RegisteredTime = registeredTime ?? DateTime.Now.AddSeconds(-10),
@@ -20,6 +20,7 @@ namespace File_manager.Tests
             FirstSeenTime  = firstSeen ?? DateTime.Now
         };
 
+        // ── CalculateStatus ──────────────────────────────────────────
 
         [Fact]
         public void CalculateStatus_FileNotExists_ReturnsMissing()
@@ -30,14 +31,13 @@ namespace File_manager.Tests
         }
 
         [Fact]
-        public void CalculateStatus_OldUnchangedFile_ReturnsNew()
+        public void CalculateStatus_UnchangedFile_ReturnsNew()
         {
             var tmp = Path.GetTempFileName();
             try
             {
                 var fi       = new FileInfo(tmp);
-                var baseline = Baseline(fi.LastWriteTime, fi.Length,
-                    firstSeen: DateTime.Now.AddDays(-10));
+                var baseline = Baseline(fi.Length, registeredTime: fi.LastWriteTime);
                 var result   = _sut.CalculateStatus(fi, baseline);
                 Assert.Equal(FileStatus.New, result);
             }
@@ -52,7 +52,7 @@ namespace File_manager.Tests
             {
                 File.WriteAllText(tmp, "some content");
                 var fi       = new FileInfo(tmp);
-                var baseline = Baseline(fi.LastWriteTime, size: 1);
+                var baseline = Baseline(size: 1, registeredTime: fi.LastWriteTime);
                 var result   = _sut.CalculateStatus(fi, baseline);
                 Assert.Equal(FileStatus.Modified, result);
             }
@@ -60,19 +60,20 @@ namespace File_manager.Tests
         }
 
         [Fact]
-        public void CalculateStatus_TimeChanged_ReturnsModified()
+        public void CalculateStatus_ZeroSizeFile_ReturnsNew()
         {
             var tmp = Path.GetTempFileName();
             try
             {
                 var fi       = new FileInfo(tmp);
-                var baseline = Baseline(DateTime.Now.AddHours(-2), fi.Length);
+                var baseline = Baseline(size: 0, registeredTime: fi.LastWriteTime);
                 var result   = _sut.CalculateStatus(fi, baseline);
-                Assert.Equal(FileStatus.Modified, result);
+                Assert.Equal(FileStatus.New, result);
             }
             finally { File.Delete(tmp); }
         }
 
+        // ── ResolveStatus ────────────────────────────────────────────
 
         [Fact]
         public void ResolveStatus_FileMissing_ReturnsMissing()
@@ -90,22 +91,8 @@ namespace File_manager.Tests
             {
                 File.WriteAllText(tmp, "hello world");
                 var fi       = new FileInfo(tmp);
-                var baseline = Baseline(fi.LastWriteTime, size: 1);
+                var baseline = Baseline(size: 1, registeredTime: fi.LastWriteTime);
                 var result   = _sut.ResolveStatus(fi, baseline, FileStatus.Approved);
-                Assert.Equal(FileStatus.Modified, result);
-            }
-            finally { File.Delete(tmp); }
-        }
-
-        [Fact]
-        public void ResolveStatus_TimeChanged_ReturnsModified()
-        {
-            var tmp = Path.GetTempFileName();
-            try
-            {
-                var fi       = new FileInfo(tmp);
-                var baseline = Baseline(DateTime.Now.AddHours(-2), fi.Length);
-                var result   = _sut.ResolveStatus(fi, baseline, FileStatus.New);
                 Assert.Equal(FileStatus.Modified, result);
             }
             finally { File.Delete(tmp); }
@@ -118,8 +105,7 @@ namespace File_manager.Tests
             try
             {
                 var fi       = new FileInfo(tmp);
-                var baseline = Baseline(fi.LastWriteTime, fi.Length,
-                    firstSeen: DateTime.Now.AddDays(-10));
+                var baseline = Baseline(fi.Length, registeredTime: fi.LastWriteTime);
                 var result   = _sut.ResolveStatus(fi, baseline, FileStatus.Approved);
                 Assert.Equal(FileStatus.Approved, result);
             }
@@ -133,8 +119,7 @@ namespace File_manager.Tests
             try
             {
                 var fi       = new FileInfo(tmp);
-                var baseline = Baseline(fi.LastWriteTime, fi.Length,
-                    firstSeen: DateTime.Now.AddDays(-10));
+                var baseline = Baseline(fi.Length, registeredTime: fi.LastWriteTime);
                 var result   = _sut.ResolveStatus(fi, baseline, FileStatus.Rejected);
                 Assert.Equal(FileStatus.Rejected, result);
             }
@@ -148,8 +133,7 @@ namespace File_manager.Tests
             try
             {
                 var fi       = new FileInfo(tmp);
-                var baseline = Baseline(fi.LastWriteTime, fi.Length,
-                    firstSeen: DateTime.Now.AddDays(-10));
+                var baseline = Baseline(fi.Length, registeredTime: fi.LastWriteTime);
                 var result   = _sut.ResolveStatus(fi, baseline, FileStatus.Done);
                 Assert.Equal(FileStatus.Done, result);
             }
@@ -157,14 +141,13 @@ namespace File_manager.Tests
         }
 
         [Fact]
-        public void ResolveStatus_OldUnchangedFile_ReturnsNew()
+        public void ResolveStatus_UnchangedFile_ReturnsNew()
         {
             var tmp = Path.GetTempFileName();
             try
             {
                 var fi       = new FileInfo(tmp);
-                var baseline = Baseline(fi.LastWriteTime, fi.Length,
-                    firstSeen: DateTime.Now.AddDays(-10));
+                var baseline = Baseline(fi.Length, registeredTime: fi.LastWriteTime);
                 var result   = _sut.ResolveStatus(fi, baseline, FileStatus.New);
                 Assert.Equal(FileStatus.New, result);
             }
@@ -179,11 +162,64 @@ namespace File_manager.Tests
             {
                 File.WriteAllText(tmp, "changed content");
                 var fi       = new FileInfo(tmp);
-                var baseline = Baseline(fi.LastWriteTime, size: 1);
+                var baseline = Baseline(size: 1, registeredTime: fi.LastWriteTime);
                 var result   = _sut.ResolveStatus(fi, baseline, FileStatus.Approved);
                 Assert.Equal(FileStatus.Modified, result);
             }
             finally { File.Delete(tmp); }
+        }
+
+        [Fact]
+        public void ResolveStatus_SizeChanged_OverridesRejected()
+        {
+            var tmp = Path.GetTempFileName();
+            try
+            {
+                File.WriteAllText(tmp, "changed content");
+                var fi       = new FileInfo(tmp);
+                var baseline = Baseline(size: 1, registeredTime: fi.LastWriteTime);
+                var result   = _sut.ResolveStatus(fi, baseline, FileStatus.Rejected);
+                Assert.Equal(FileStatus.Modified, result);
+            }
+            finally { File.Delete(tmp); }
+        }
+
+        [Fact]
+        public void ResolveStatus_SizeChanged_OverridesDone()
+        {
+            var tmp = Path.GetTempFileName();
+            try
+            {
+                File.WriteAllText(tmp, "changed content");
+                var fi       = new FileInfo(tmp);
+                var baseline = Baseline(size: 1, registeredTime: fi.LastWriteTime);
+                var result   = _sut.ResolveStatus(fi, baseline, FileStatus.Done);
+                Assert.Equal(FileStatus.Modified, result);
+            }
+            finally { File.Delete(tmp); }
+        }
+
+        [Fact]
+        public void ResolveStatus_SizeChanged_OverridesNew()
+        {
+            var tmp = Path.GetTempFileName();
+            try
+            {
+                File.WriteAllText(tmp, "changed content");
+                var fi       = new FileInfo(tmp);
+                var baseline = Baseline(size: 1, registeredTime: fi.LastWriteTime);
+                var result   = _sut.ResolveStatus(fi, baseline, FileStatus.New);
+                Assert.Equal(FileStatus.Modified, result);
+            }
+            finally { File.Delete(tmp); }
+        }
+
+        [Fact]
+        public void ResolveStatus_MissingFile_OverridesApproved()
+        {
+            var fake   = new FileInfo("C:\\no_such_file_abc.txt");
+            var result = _sut.ResolveStatus(fake, Baseline(), FileStatus.Done);
+            Assert.Equal(FileStatus.Missing, result);
         }
     }
 }
