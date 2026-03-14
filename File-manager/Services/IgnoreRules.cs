@@ -89,7 +89,11 @@ namespace File_manager.Services
         public static bool ShouldIgnoreFile(string name)
         {
             var ext = Path.GetExtension(name).ToLower();
-            return _alwaysIgnoreExts.Contains(ext);
+            return ext switch
+            {
+                ".pek" => true,  // Premiere Pro 
+                _ => _alwaysIgnoreExts.Contains(ext)
+            };
         }
 
         public static IEnumerable<string> GetFiles(string rootPath, ProjectType projectType,
